@@ -22,12 +22,10 @@ package com.baidu.hugegraph.api.traversers;
 import java.util.Map;
 
 import javax.inject.Singleton;
-import javax.ws.rs.DefaultValue;
-import javax.ws.rs.GET;
+import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
-import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Context;
 
 import org.slf4j.Logger;
@@ -38,12 +36,13 @@ import com.baidu.hugegraph.api.graph.VertexAPI;
 import com.baidu.hugegraph.backend.id.Id;
 import com.baidu.hugegraph.core.GraphManager;
 import com.baidu.hugegraph.server.RestServer;
-import com.baidu.hugegraph.traversal.algorithm.RankAlgorithm;
+import com.baidu.hugegraph.traversal.algorithm.RankTraverser;
 import com.baidu.hugegraph.util.CollectionUtil;
 import com.baidu.hugegraph.util.E;
 import com.baidu.hugegraph.util.JsonUtil;
 import com.baidu.hugegraph.util.Log;
 import com.codahale.metrics.annotation.Timed;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 @Path("graphs/{graph}/traversers/personalrank")
 @Singleton
@@ -51,36 +50,57 @@ public class PersonalRankAPI extends API {
 
     private static final Logger LOG = Log.logger(RestServer.class);
 
-    @GET
+    @POST
     @Timed
     @Produces(APPLICATION_JSON_WITH_CHARSET)
     public String personalRank(@Context GraphManager manager,
                                @PathParam("graph") String graph,
-                               @QueryParam("source") String source,
-                               @QueryParam("label") String edgeLabel,
-                               @QueryParam("alpha") double alpha,
-                               @QueryParam("max_depth") int depth,
-                               @QueryParam("sort_result") @DefaultValue("true")
-                               boolean sortResult) {
+                               RankRequest request) {
         LOG.debug("Graph [{}] get personal rank from '{}' with " +
                   "edge label '{}', alpha '{}', max depth '{}'",
-                  graph, source, edgeLabel, alpha, depth);
+                  graph, request.source, request.label,
+                  request.alpha, request.maxDepth);
 
-        E.checkNotNull(source, "source vertex id");
-        E.checkNotNull(edgeLabel, "edge label");
-        E.checkArgument(alpha >= 0.0 && alpha <= 1.0,
-                        "The alpha must between [0, 1], but got '%s'", alpha);
-        E.checkArgument(depth >= 1,
-                        "The max depth must >= 1, but got '%s'", depth);
+        E.checkNotNull(request.source, "source vertex id");
+        E.checkNotNull(request.label, "edge label");
+        E.checkArgument(request.alpha >= 0.0 && request.alpha <= 1.0,
+                        "The alpha must between [0, 1], but got '%s'",
+                        request.alpha);
+        E.checkArgument(request.maxDepth >= 1,
+                        "The max depth must >= 1, but got '%s'",
+                        request.maxDepth);
 
-        Id sourceId = VertexAPI.checkAndParseVertexId(source);
+        Id sourceId = VertexAPI.checkAndParseVertexId(request.source);
         HugeGraph g = graph(manager, graph);
 
-        RankAlgorithm algorithm = new RankAlgorithm(g, alpha, depth);
-        Map<Id, Double> ranks = algorithm.personalRank(sourceId, edgeLabel);
-        if (sortResult) {
+        RankTraverser traverser = new RankTraverser(g, request.alpha,
+                                                    request.maxDepth);
+        Map<Id, Double> ranks = traverser.personalRank(sourceId, request.label);
+        if (request.sorted) {
             ranks = CollectionUtil.sortByValue(ranks, false);
         }
         return JsonUtil.toJson(ranks);
+    }
+
+    private static class RankRequest {
+
+        @JsonProperty("source")
+        private String source;
+        @JsonProperty("label")
+        private String label;
+        @JsonProperty("alpha")
+        private double alpha;
+        @JsonProperty("max_depth")
+        private int maxDepth;
+        @JsonProperty("sorted")
+        private boolean sorted = true;
+
+        @Override
+        public String toString() {
+            return String.format("RankRequest{source=%s,label=%s," +
+                                 "alpha=%s,maxDepth=%s,sorted=%s}",
+                                 this.source, this.label, this.alpha,
+                                 this.maxDepth, this.sorted);
+        }
     }
 }
