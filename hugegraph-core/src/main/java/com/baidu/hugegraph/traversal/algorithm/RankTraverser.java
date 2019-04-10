@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.function.BiFunction;
 
 import javax.ws.rs.core.MultivaluedMap;
 
@@ -35,10 +34,7 @@ import org.apache.tinkerpop.gremlin.structure.Edge;
 
 import com.baidu.hugegraph.HugeGraph;
 import com.baidu.hugegraph.backend.id.Id;
-import com.baidu.hugegraph.schema.EdgeLabel;
-import com.baidu.hugegraph.schema.VertexLabel;
 import com.baidu.hugegraph.structure.HugeEdge;
-import com.baidu.hugegraph.structure.HugeVertex;
 import com.baidu.hugegraph.type.define.Directions;
 import com.baidu.hugegraph.util.E;
 import com.baidu.hugegraph.util.InsertionOrderUtil;
@@ -50,156 +46,10 @@ import com.google.common.collect.Ordering;
 public class RankTraverser extends HugeTraverser {
 
     private final double alpha;
-    private final long maxDepth;
 
     public RankTraverser(HugeGraph graph, double alpha) {
         super(graph);
         this.alpha = alpha;
-        this.maxDepth = 0L;
-    }
-
-    public RankTraverser(HugeGraph graph, double alpha, long maxDepth) {
-        super(graph);
-        this.alpha = alpha;
-        this.maxDepth = maxDepth;
-    }
-
-    public Map<Id, Double> personalRank(Id source, String label) {
-        Id labelId = this.graph().edgeLabel(label).id();
-        Directions dir = this.getStartDirection(source, label);
-        long degree = this.degreeOfVertex(source, dir, labelId);
-        if (degree < 1) {
-            return ImmutableMap.of(source, 1.0);
-        }
-
-        long depth = 0;
-        Set<Id> outSeeds = new HashSet<>();
-        Set<Id> inSeeds = new HashSet<>();
-        if (dir == Directions.OUT) {
-            outSeeds.add(source);
-        } else {
-            inSeeds.add(source);
-        }
-        Map<Id, Double> ranks = new HashMap<>();
-        ranks.put(source, 1.0);
-        while (++depth <= this.maxDepth) {
-            Map<Id, Double> incrRanks = this.getIncrRanks(outSeeds, inSeeds,
-                                                          labelId, ranks);
-            ranks = this.compensateSourceVertex(source, incrRanks);
-        }
-        return ranks;
-    }
-
-    private Map<Id, Double> compensateSourceVertex(Id source,
-                                                   Map<Id, Double> incrRanks) {
-        double sourceRank = incrRanks.getOrDefault(source, 0.0);
-        sourceRank += (1 - this.alpha);
-        incrRanks.put(source, sourceRank);
-        return incrRanks;
-    }
-
-//    public Map<Id, Double> neighborRankBak(Id source, List<Step> steps) {
-//        Set<Id> seeds = new HashSet<>();
-//        seeds.add(source);
-//        Map<Id, Double> ranks = new HashMap<>();
-//        ranks.put(source, 1.0);
-//        for (int depth = 0; depth < this.maxDepth; depth++) {
-//            Step step = steps.get(depth);
-//            Id label = null;
-//            if (step.label != null) {
-//                label = this.graph().edgeLabel(step.label).id();
-//            }
-//            Directions direction = step.direction;
-//
-//            Map<Id, Double> incrRanks = this.getIncrRanks(seeds, direction,
-//                                                          label, ranks);
-//            this.combineIncrement(ranks, incrRanks);
-//            seeds = incrRanks.keySet();
-//        }
-//        return ranks;
-//    }
-
-    private void combineIncrement(Map<Id, Double> ranks,
-                                  Map<Id, Double> incrRanks) {
-        // Update the rank of the neighbor vertices
-        for (Map.Entry<Id, Double> entry : incrRanks.entrySet()) {
-            double oldRank = ranks.getOrDefault(entry.getKey(), 0.0);
-            double incrRank = entry.getValue();
-            double newRank = oldRank + incrRank;
-            ranks.put(entry.getKey(), newRank);
-        }
-    }
-
-    private Map<Id, Double> getIncrRanks(Set<Id> outSeeds, Set<Id> inSeeds,
-                                         Id label, Map<Id, Double> ranks) {
-        Map<Id, Double> incrRanks = new HashMap<>();
-        BiFunction<Set<Id>, Directions, Set<Id>> neighborIncrRanks = (seeds, dir) -> {
-            Set<Id> tmpSeeds = new HashSet<>();
-            for (Id seed : seeds) {
-                long degree = this.degreeOfVertex(seed, dir, label);
-                assert degree > 0;
-                // Must be exist
-                double originRank = ranks.get(seed);
-                double spreadRank = originRank * alpha / degree;
-
-                Set<Id> neighbors = this.adjacentVertices(seed, dir, label);
-                // Collect all neighbors increment
-                for (Id neighbor : neighbors) {
-                    tmpSeeds.add(neighbor);
-                    // Assign an initial value when firstly update neighbor rank
-                    double incrRank = incrRanks.getOrDefault(neighbor, 0.0);
-                    incrRank += spreadRank;
-                    incrRanks.put(neighbor, incrRank);
-                }
-            }
-            return tmpSeeds;
-        };
-
-        Set<Id> tmpInSeeds = neighborIncrRanks.apply(outSeeds, Directions.OUT);
-        Set<Id> tmpOutSeeds = neighborIncrRanks.apply(inSeeds, Directions.IN);
-
-        outSeeds.addAll(tmpOutSeeds);
-        inSeeds.addAll(tmpInSeeds);
-        return incrRanks;
-    }
-
-    private Map<Id, Double> getIncrRanks(Set<Id> seeds, Directions dir,
-                                         Id label, Map<Id, Double> ranks) {
-        Map<Id, Double> rankIncrs = new HashMap<>();
-        for (Id seed : seeds) {
-            long degree = this.degreeOfVertex(seed, dir, label);
-            assert degree > 0;
-            // Must be exist
-            double originRank = ranks.get(seed);
-            double spreadRank = originRank * alpha / degree;
-
-            Set<Id> neighbors = this.adjacentVertices(seed, dir, label);
-            // Collect all neighbors increment
-            for (Id neighbor : neighbors) {
-                // Assign an initial value when firstly update neighbor rank
-                double incrRank = rankIncrs.getOrDefault(neighbor, 0.0);
-                incrRank += spreadRank;
-                rankIncrs.put(neighbor, incrRank);
-            }
-        }
-        return rankIncrs;
-    }
-
-    private Directions getStartDirection(Id source, String label) {
-        // NOTE: The outer layer needs to ensure that the vertex Id is valid
-        HugeVertex vertex = (HugeVertex) graph().vertices(source).next();
-        VertexLabel vertexLabel = vertex.schemaLabel();
-        EdgeLabel edgeLabel = this.graph().edgeLabel(label);
-        E.checkArgument(edgeLabel.linkWithLabel(vertexLabel.id()),
-                        "The vertex '%s' doesn't link with edge label '%s'",
-                        source, label);
-
-        if (edgeLabel.sourceLabel().equals(vertexLabel.id())) {
-            return Directions.OUT;
-        } else {
-            assert edgeLabel.targetLabel().equals(vertexLabel.id());
-            return Directions.IN;
-        }
     }
 
     public List<Map<Id, Double>> neighborRank(Id source, List<Step> steps,
@@ -208,11 +58,10 @@ public class RankTraverser extends HugeTraverser {
         checkCapacity(capacity);
         checkLimit(limit);
 
-        boolean sameLayerTransfer = false;
-
         MultivaluedMap<Id, Node> sources = newMultivalueMap();
         sources.add(source, new Node(source, null));
 
+        boolean sameLayerTransfer = true;
         int stepNum = steps.size();
         int pathCount = 0;
         long access = 0;
@@ -224,18 +73,19 @@ public class RankTraverser extends HugeTraverser {
         root : for (Step step : steps) {
             stepNum--;
             newVertices = newMultivalueMap();
-            Iterator<Edge> edges;
 
             Map<Id, Double> lastLayerRanks = ranks.get(ranks.size() - 1);
             Map<Id, Double> rankIncrs = new HashMap<>();
             MultivaluedMap<Id, Node> adjacencies = newMultivalueMap();
             // Traversal vertices of previous level
             for (Map.Entry<Id, List<Node>> entry : sources.entrySet()) {
-                List<Node> adjacency = new ArrayList<>();
-                edges = edgesOfVertex(entry.getKey(), step.direction,
-                                      step.labels, step.properties,
-                                      step.degree);
+                Id curNode = entry.getKey();
+                Iterator<Edge> edges = edgesOfVertex(curNode, step.direction,
+                                                     step.labels, null,
+                                                     step.degree);
+
                 long degree = 0L;
+                List<Node> adjacency = new ArrayList<>();
                 Set<Id> sameLayerNodes = new HashSet<>();
                 Map<Integer, Set<Id>> prevLayerNodes = new HashMap<>();
                 neighbor: while (edges.hasNext()) {
@@ -243,12 +93,12 @@ public class RankTraverser extends HugeTraverser {
                     HugeEdge edge = (HugeEdge) edges.next();
                     Id target = edge.id().otherVertexId();
                     // Determine whether it belongs to the same layer
-                    if (sources.keySet().contains(target)) {
+                    if (sources.containsKey(target)) {
                         sameLayerNodes.add(target);
                         continue;
                     }
                     /*
-                     * Determine whether it belongs to the previous L layer,
+                     * Determine whether it belongs to the previous layers,
                      * if it belongs, update the weight, but no longer pass
                      */
                     for (int i = ranks.size() - 2; i > 0; i--) {
@@ -272,8 +122,9 @@ public class RankTraverser extends HugeTraverser {
                         checkCapacity(capacity, ++access, "neighbor ranks");
                     }
                 }
-                assert degree == sameLayerNodes.size() + adjacency.size();
-                adjacencies.addAll(entry.getKey(), adjacency);
+                assert degree == sameLayerNodes.size() + prevLayerNodes.size() +
+                                 adjacency.size();
+                adjacencies.addAll(curNode, adjacency);
 
                 // Add current node's adjacent nodes
                 for (Node node : adjacency) {
@@ -285,132 +136,129 @@ public class RankTraverser extends HugeTraverser {
                         }
                     }
                 }
-
-                for (Id sameLayerNode : sameLayerNodes) {
+                double incrRank = lastLayerRanks.get(curNode) * alpha / degree;
+                for (Id node : sameLayerNodes) {
                     // Assign an initial value when firstly update neighbor rank
-                    double incrRank = rankIncrs.getOrDefault(sameLayerNode, 0.0);
-                    incrRank += (lastLayerRanks.get(entry.getKey()) * alpha / degree);
-                    rankIncrs.put(sameLayerNode, incrRank);
+                    double originRank = rankIncrs.getOrDefault(node, 0.0);
+                    rankIncrs.put(node, originRank + incrRank);
                 }
                 for (Map.Entry<Integer, Set<Id>> e : prevLayerNodes.entrySet()) {
-                    int layer = e.getKey();
-                    Map<Id, Double> prevLayerRanks = ranks.get(layer);
-                    for (Id id : e.getValue()) {
-                        double originRank = prevLayerRanks.get(id);
-                        double incrRank = lastLayerRanks.get(entry.getKey()) * alpha / degree;
-                        prevLayerRanks.put(id, originRank + incrRank);
+                    Map<Id, Double> prevLayerRanks = ranks.get(e.getKey());
+                    for (Id node : e.getValue()) {
+                        double originRank = prevLayerRanks.get(node);
+                        prevLayerRanks.put(node, originRank + incrRank);
                     }
                 }
             }
 
-            Map<Id, Double> newLayerRanks = new LimitValueOrderedMap(step.backup);
+            Map<Id, Double> newLayerRanks = new LimitOrderedMap(step.backup);
             if (sameLayerTransfer) {
                 // First contribute to last layer, then pass to the new layer
-                for (Map.Entry<Id, Double> entry : rankIncrs.entrySet()) {
-                    double originRank = lastLayerRanks.get(entry.getKey());
-                    double incrRank = entry.getValue();
-                    lastLayerRanks.put(entry.getKey(), originRank + incrRank);
-                }
-                for (Map.Entry<Id, List<Node>> entry : adjacencies.entrySet()) {
-                    Id parentId = entry.getKey();
-                    long size = entry.getValue().size();
-                    for (Node node : entry.getValue()) {
-                        double rank = newLayerRanks.getOrDefault(node.id(), 0.0);
-                        rank += (lastLayerRanks.get(parentId) * alpha / size);
-                        newLayerRanks.put(node.id(), rank);
-                    }
-                }
+                this.contributeLastLayer(rankIncrs, lastLayerRanks);
+                this.contributeNewLayer(adjacencies, lastLayerRanks,
+                                        newLayerRanks);
             } else {
                 // First pass to the new layer, then contribute to last layer
-                for (Map.Entry<Id, List<Node>> entry : adjacencies.entrySet()) {
-                    Id parentId = entry.getKey();
-                    long size = entry.getValue().size();
-                    for (Node node : entry.getValue()) {
-                        double rank = newLayerRanks.getOrDefault(node.id(), 0.0);
-                        rank += (lastLayerRanks.get(parentId) * alpha / size);
-                        newLayerRanks.put(node.id(), rank);
-                    }
-                }
-                for (Map.Entry<Id, Double> entry : rankIncrs.entrySet()) {
-                    double originRank = lastLayerRanks.get(entry.getKey());
-                    double incrRank = entry.getValue();
-                    lastLayerRanks.put(entry.getKey(), originRank + incrRank);
-                }
+                this.contributeNewLayer(adjacencies, lastLayerRanks,
+                                        newLayerRanks);
+                this.contributeLastLayer(rankIncrs, lastLayerRanks);
             }
-
-
-
             ranks.add(newLayerRanks);
+
             // Re-init sources
             sources = newVertices;
         }
         if (stepNum != 0) {
             return ImmutableList.of(ImmutableMap.of());
         }
-        for (int i = 1; i < ranks.size(); i++) {
-            Step step = steps.get(i - 1);
-            Map<Id, Double> rank = ranks.get(i);
-            if (rank.size() > step.number) {
-                rank = topN(rank, step.number);
-                ranks.add(i, rank);
+        return this.cropRanks(ranks, steps);
+    }
+
+    private void contributeLastLayer(Map<Id, Double> rankIncrs,
+                                     Map<Id, Double> lastLayerRanks) {
+        for (Map.Entry<Id, Double> entry : rankIncrs.entrySet()) {
+            double originRank = lastLayerRanks.get(entry.getKey());
+            double incrRank = entry.getValue();
+            lastLayerRanks.put(entry.getKey(), originRank + incrRank);
+        }
+    }
+
+    private void contributeNewLayer(MultivaluedMap<Id, Node> adjacencies,
+                                    Map<Id, Double> lastLayerRanks,
+                                    Map<Id, Double> newLayerRanks) {
+        for (Map.Entry<Id, List<Node>> entry : adjacencies.entrySet()) {
+            Id parentId = entry.getKey();
+            long size = entry.getValue().size();
+            for (Node node : entry.getValue()) {
+                double rank = newLayerRanks.getOrDefault(node.id(), 0.0);
+                rank += (lastLayerRanks.get(parentId) * alpha / size);
+                newLayerRanks.put(node.id(), rank);
             }
         }
-        return ranks;
+    }
+
+    private List<Map<Id, Double>> cropRanks(List<Map<Id, Double>> ranks,
+                                            List<Step> steps) {
+        assert ranks.size() > 0;
+        List<Map<Id, Double>> results = new ArrayList<>(ranks.size());
+        // The first layer is root node
+        results.add(ranks.get(0));
+        for (int i = 1; i < ranks.size(); i++) {
+            Step step = steps.get(i - 1);
+            Map<Id, Double> origin = ranks.get(i);
+            if (origin.size() > step.number) {
+                Map<Id, Double> cropped = topN(origin, step.number);
+                results.add(cropped);
+            } else {
+                results.add(origin);
+            }
+        }
+        return results;
     }
 
     public static class Step {
 
         private Directions direction;
         private Map<Id, String> labels;
-        private Map<String, Object> properties;
         private long degree;
         private int number;
         private int backup;
 
         public Step(Directions direction, Map<Id, String> labels,
-                    Map<String, Object> properties, long degree, int number) {
+                    long degree, int number) {
             this.direction = direction;
             this.labels = labels;
-            this.properties = properties;
             this.degree = degree;
             this.number = number;
             this.backup = 100000;
         }
     }
 
-    private static class LimitValueOrderedMap extends TreeMap<Id, Double> {
+    private static class LimitOrderedMap extends TreeMap<Id, Double> {
 
-        private static Ordering<Double> DESC = Ordering.from((o1, o2) -> {
-            if (o1 > o2) {
-                return -1;
-            } else if (o1 < o2) {
-                return 1;
-            } else {
-                return 0;
-            }
-        });
-
-        private final int count;
+        private final int capacity;
         private final Map<Id, Double> valueMap;
 
-        public LimitValueOrderedMap(int count) {
-            this(count, DESC, new HashMap<>());
+        public LimitOrderedMap(int count) {
+            this(count, DECR_ORDER, new HashMap<>());
         }
 
-        private LimitValueOrderedMap(int count, Ordering<Double> ordering,
-                                     HashMap<Id, Double> valueMap) {
+        private LimitOrderedMap(int capacity, Ordering<Double> ordering,
+                                HashMap<Id, Double> valueMap) {
             super(ordering.onResultOf(Functions.forMap(valueMap))
                           .compound(Ordering.natural()));
-            this.count = count;
+            this.capacity = capacity;
             this.valueMap = valueMap;
         }
 
         @Override
         public Double put(Id k, Double v) {
             if (this.valueMap.containsKey(k)) {
-                remove(k);
-            } else if (this.valueMap.size() >= count) {
-                E.checkNotNull(remove(lastKey()), "value");
+                this.remove(k);
+            } else if (this.valueMap.size() >= capacity) {
+                Id key = this.lastKey();
+                this.remove(key);
+                this.valueMap.remove(key);
             }
             this.valueMap.put(k, v);
             return super.put(k, v);
@@ -426,6 +274,16 @@ public class RankTraverser extends HugeTraverser {
             return this.valueMap.containsKey(key);
         }
     }
+
+    private static Ordering<Double> DECR_ORDER = Ordering.from((o1, o2) -> {
+        if (o1 > o2) {
+            return -1;
+        } else if (o1 < o2) {
+            return 1;
+        } else {
+            return 0;
+        }
+    });
 
     private static Map<Id, Double> topN(Map<Id, Double> origin, int n) {
         E.checkArgument(n > 0, "'N' Must be positive, but got '%s'", n);

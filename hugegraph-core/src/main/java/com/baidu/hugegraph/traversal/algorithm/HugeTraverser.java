@@ -37,7 +37,6 @@ import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.structure.Edge;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
-import org.apache.tinkerpop.gremlin.util.iterator.IteratorUtils;
 
 import com.baidu.hugegraph.HugeException;
 import com.baidu.hugegraph.HugeGraph;
@@ -166,12 +165,6 @@ public class HugeTraverser {
         return all;
     }
 
-    protected Set<Id> adjacentVertices(Id sourceV, Directions dir, Id label) {
-        // TODO: may OOM, replace with paged iterate or async task
-        return this.adjacentVertices(ImmutableSet.of(sourceV), dir, label,
-                                     null, NO_LIMIT, NO_LIMIT);
-    }
-
     private Set<Id> adjacentVertices(Set<Id> vertices, Directions dir,
                                      Id label, Set<Id> excluded,
                                      long degree, long limit) {
@@ -246,11 +239,6 @@ public class HugeTraverser {
             }
         }
         return g.limit(limit);
-    }
-
-    protected long degreeOfVertex(Id source, Directions dir, Id label) {
-        return IteratorUtils.count(this.edgesOfVertex(source, dir, label,
-                                                      NO_LIMIT));
     }
 
     protected Id getEdgeLabelId(Object label) {

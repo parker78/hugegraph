@@ -102,6 +102,7 @@ public class Example3 {
 
         Vertex K = graph.addVertex(T.label, "person", T.id, "K", "name", "K");
         Vertex L = graph.addVertex(T.label, "person", T.id, "L", "name", "L");
+        Vertex M = graph.addVertex(T.label, "person", T.id, "M", "name", "M");
 
         O.addEdge("follow", A);
         O.addEdge("follow", B);
@@ -121,6 +122,8 @@ public class Example3 {
         E.addEdge("directedby", K);
         F.addEdge("directedby", B);
         F.addEdge("directedby", L);
+
+        G.addEdge("directedby", M);
 
         graph.tx().commit();
     }

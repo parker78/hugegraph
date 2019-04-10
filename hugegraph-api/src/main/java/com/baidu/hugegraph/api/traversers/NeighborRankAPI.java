@@ -66,8 +66,9 @@ public class NeighborRankAPI extends API {
                                @PathParam("graph") String graph,
                                RankRequest request) {
         LOG.debug("Graph [{}] get neighbor rank from '{}' with steps '{}', " +
-                  "alpha '{}', and sorted '{}'",
-                  graph, request.source, request.steps, request.alpha);
+                  "alpha '{}', capacity '{}', limit '{}'",
+                  graph, request.source, request.steps, request.alpha,
+                  request.capacity, request.limit);
 
         E.checkArgumentNotNull(request, "The rank request body can't be null");
         E.checkArgumentNotNull(request.source,
@@ -78,8 +79,8 @@ public class NeighborRankAPI extends API {
                             "specified or as null, but can't be specified " +
                             "as empty");
         }
-        E.checkArgument(request.alpha >= 0.0 && request.alpha <= 1.0,
-                        "The alpha of rank request must between [0, 1], " +
+        E.checkArgument(request.alpha > 0 && request.alpha <= 1.0,
+                        "The alpha of rank request must belong (0, 1], " +
                         "but got '%s'", request.alpha);
 
         Id sourceId = VertexAPI.checkAndParseVertexId(request.source);
@@ -89,8 +90,8 @@ public class NeighborRankAPI extends API {
 
         RankTraverser traverser = new RankTraverser(g, request.alpha);
         List<Map<Id, Double>> ranks = traverser.neighborRank(sourceId, steps,
-                                                       request.capacity,
-                                                       request.limit);
+                                                             request.capacity,
+                                                             request.limit);
         return JsonUtil.toJson(ranks);
     }
 
@@ -119,8 +120,9 @@ public class NeighborRankAPI extends API {
         @Override
         public String toString() {
             return String.format("RankRequest{source=%s,steps=%s," +
-                                 "alpha=%s}",
-                                 this.source, this.steps, this.alpha);
+                                 "alpha=%s,capacity=%s,limit=%s}",
+                                 this.source, this.steps, this.alpha,
+                                 this.capacity, this.limit);
         }
     }
 
@@ -132,8 +134,6 @@ public class NeighborRankAPI extends API {
         public Directions direction;
         @JsonProperty("labels")
         public List<String> labels;
-        @JsonProperty("properties")
-        public Map<String, Object> properties;
         @JsonProperty("degree")
         public long degree = Long.valueOf(DEFAULT_DEGREE);
         @JsonProperty("number")
@@ -141,9 +141,8 @@ public class NeighborRankAPI extends API {
 
         @Override
         public String toString() {
-            return String.format("Step{direction=%s,labels=%s,properties=%s," +
-                                 "degree=%s}", this.direction, this.labels,
-                                 this.properties, this.degree);
+            return String.format("Step{direction=%s,labels=%s,degree=%s}",
+                                 this.direction, this.labels, this.degree);
         }
 
         private RankTraverser.Step jsonToStep(HugeGraph graph) {
@@ -153,7 +152,7 @@ public class NeighborRankAPI extends API {
             E.checkArgument(this.degree == NO_LIMIT,
                             "Degree must be greater than or equal to sample, " +
                             "but got degree %s", degree);
-            E.checkArgument(this.number > 0 && this.number <= 1000,
+            E.checkArgument(this.number > 0 && this.number <= MAX_NUMBER,
                             "The recommended number of each layer cannot " +
                             "exceed '%s'", MAX_NUMBER);
             Map<Id, String> labelIds = new HashMap<>();
@@ -164,8 +163,7 @@ public class NeighborRankAPI extends API {
                 }
             }
             return new RankTraverser.Step(this.direction, labelIds,
-                                          this.properties, this.degree,
-                                          this.number);
+                                          this.degree, this.number);
         }
     }
 }
