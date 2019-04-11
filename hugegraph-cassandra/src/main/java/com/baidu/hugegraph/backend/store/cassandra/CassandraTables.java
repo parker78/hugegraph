@@ -213,16 +213,16 @@ public class CassandraTables {
             ImmutableMap<HugeKeys, DataType> pkeys = ImmutableMap.of(
                     HugeKeys.ID, DATATYPE_IL
             );
-            ImmutableMap<HugeKeys, DataType> ckeys = ImmutableMap.of(
-                    HugeKeys.BASE_TYPE, DataType.tinyint(),
-                    HugeKeys.BASE_VALUE, DATATYPE_SL
-            );
-            ImmutableMap<HugeKeys, DataType> columns = ImmutableMap.of(
-                    HugeKeys.NAME, DataType.text(),
-                    HugeKeys.INDEX_TYPE, DataType.tinyint(),
-                    HugeKeys.FIELDS, DataType.list(DATATYPE_PK),
-                    HugeKeys.STATUS, DataType.tinyint()
-            );
+            ImmutableMap<HugeKeys, DataType> ckeys = ImmutableMap.of();
+            ImmutableMap<HugeKeys, DataType> columns = ImmutableMap
+                    .<HugeKeys, DataType>builder()
+                    .put(HugeKeys.NAME, DataType.text())
+                    .put(HugeKeys.BASE_TYPE, DataType.tinyint())
+                    .put(HugeKeys.BASE_VALUE, DATATYPE_SL)
+                    .put(HugeKeys.INDEX_TYPE, DataType.tinyint())
+                    .put(HugeKeys.FIELDS, DataType.list(DATATYPE_PK))
+                    .put(HugeKeys.STATUS, DataType.tinyint())
+                    .build();
 
             this.createTable(session, pkeys, ckeys, columns);
             this.createIndex(session, NAME_INDEX, HugeKeys.NAME);
@@ -295,6 +295,10 @@ public class CassandraTables {
 
         protected Directions direction() {
             return this.direction;
+        }
+
+        protected String labelQueryTable() {
+            return this.table();
         }
 
         @Override
@@ -397,7 +401,7 @@ public class CassandraTables {
             final String OTHER_VERTEX = formatKey(HugeKeys.OTHER_VERTEX);
 
             // Query edges by label index
-            Select select = QueryBuilder.select().from(this.table());
+            Select select = QueryBuilder.select().from(this.labelQueryTable());
             select.where(formatEQ(HugeKeys.LABEL, label.asLong()));
 
             ResultSet rs;
@@ -428,8 +432,8 @@ public class CassandraTables {
             }
         }
 
-        private Delete buildDelete(Id label, String ownerVertex,
-                                   Directions direction) {
+        protected Delete buildDelete(Id label, String ownerVertex,
+                                     Directions direction) {
             Delete delete = QueryBuilder.delete().from(edgesTable(direction));
             delete.where(formatEQ(HugeKeys.OWNER_VERTEX, ownerVertex));
             delete.where(formatEQ(HugeKeys.DIRECTION, direction.code()));

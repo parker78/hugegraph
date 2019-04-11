@@ -21,13 +21,21 @@ package com.baidu.hugegraph.io;
 
 import java.io.IOException;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.tinkerpop.gremlin.structure.Edge;
+import org.apache.tinkerpop.gremlin.structure.Property;
 import org.apache.tinkerpop.gremlin.structure.io.graphson.GraphSONIo;
+import org.apache.tinkerpop.gremlin.structure.io.graphson.GraphSONTokens;
+import org.apache.tinkerpop.gremlin.structure.io.graphson.GraphSONUtil;
 import org.apache.tinkerpop.gremlin.structure.io.graphson.TinkerPopJacksonModule;
+import org.apache.tinkerpop.gremlin.structure.util.Comparators;
+import org.apache.tinkerpop.gremlin.util.iterator.IteratorUtils;
 import org.apache.tinkerpop.shaded.jackson.core.JsonGenerator;
 import org.apache.tinkerpop.shaded.jackson.core.JsonParser;
 import org.apache.tinkerpop.shaded.jackson.databind.DeserializationContext;
@@ -89,9 +97,9 @@ public class HugeGraphSONModule extends TinkerPopJacksonModule {
         TYPE_DEFINITIONS.put(EdgeLabel.class, "EdgeLabel");
         TYPE_DEFINITIONS.put(IndexLabel.class, "IndexLabel");
 
-        // HugeGraph vertex/edge serializer
+        // HugeGraph vertex serializer
         TYPE_DEFINITIONS.put(HugeVertex.class, "HugeVertex");
-        TYPE_DEFINITIONS.put(HugeEdge.class, "HugeEdge");
+//        TYPE_DEFINITIONS.put(HugeEdge.class, "HugeEdge");
 
         // HugeGraph shard serializer
         TYPE_DEFINITIONS.put(Shard.class, "Shard");
@@ -128,7 +136,7 @@ public class HugeGraphSONModule extends TinkerPopJacksonModule {
         addSerializer(IndexLabel.class, new IndexLabelSerializer());
 
         addSerializer(HugeVertex.class, new HugeVertexSerializer());
-        addSerializer(HugeEdge.class, new HugeEdgeSerializer());
+//        addSerializer(HugeEdge.class, new HugeEdgeSerializer());
 
         addSerializer(Shard.class, new ShardSerializer());
     }
@@ -396,7 +404,56 @@ public class HugeGraphSONModule extends TinkerPopJacksonModule {
             this.writePropertiesField(edge.getProperties(), generator, provider);
 
             generator.writeEndObject();
+
+//            ser(edge, generator, provider, null);
         }
+
+//        @Override
+//        public void serializeWithType(HugeEdge edge, JsonGenerator generator,
+//                                      SerializerProvider provider,
+//                                      TypeSerializer typeSer)
+//                throws IOException {
+////            typeSer.writeTypePrefixForScalar(value, gen);
+////            this.serialize(value, gen, serializers);
+////            typeSer.writeTypeSuffixForScalar(value, gen);
+//
+//            ser(edge, generator, provider, typeSer);
+//        }
+//
+//        private void ser(final Edge edge, final JsonGenerator jsonGenerator,
+//                         final SerializerProvider serializerProvider, final TypeSerializer typeSerializer) throws IOException {
+//            jsonGenerator.writeStartObject();
+//            if (typeSerializer != null) jsonGenerator.writeStringField(
+//                    GraphSONTokens.CLASS, HashMap.class.getName());
+//            GraphSONUtil
+//                    .writeWithType(GraphSONTokens.ID, edge.id(), jsonGenerator, serializerProvider, typeSerializer);
+//
+//            jsonGenerator.writeStringField(GraphSONTokens.LABEL, edge.label());
+//            jsonGenerator.writeStringField(GraphSONTokens.TYPE, GraphSONTokens.EDGE);
+//            jsonGenerator.writeStringField(GraphSONTokens.IN_LABEL, edge.inVertex().label());
+//            jsonGenerator.writeStringField(GraphSONTokens.OUT_LABEL, edge.outVertex().label());
+//            GraphSONUtil.writeWithType(GraphSONTokens.IN, edge.inVertex().id(), jsonGenerator, serializerProvider, typeSerializer);
+//            GraphSONUtil.writeWithType(GraphSONTokens.OUT, edge.outVertex().id(), jsonGenerator, serializerProvider, typeSerializer);
+//            writeProperties(edge, jsonGenerator, serializerProvider, typeSerializer);
+//            jsonGenerator.writeEndObject();
+//        }
+//
+//        private void writeProperties(final Edge edge, final JsonGenerator jsonGenerator,
+//                                     final SerializerProvider serializerProvider,
+//                                     final TypeSerializer typeSerializer) throws IOException {
+//            boolean normalize = false;
+//            final Iterator<Property<Object>> elementProperties = normalize ?
+//                    IteratorUtils.list(edge.properties(), Comparators.PROPERTY_COMPARATOR).iterator() : edge.properties();
+//            if (elementProperties.hasNext()) {
+//                jsonGenerator.writeObjectFieldStart(GraphSONTokens.PROPERTIES);
+//                if (typeSerializer != null) jsonGenerator.writeStringField(GraphSONTokens.CLASS, HashMap.class.getName());
+//                while (elementProperties.hasNext()) {
+//                    final Property<Object> elementProperty = elementProperties.next();
+//                    GraphSONUtil.writeWithType(elementProperty.key(), elementProperty.value(), jsonGenerator, serializerProvider, typeSerializer);
+//                }
+//                jsonGenerator.writeEndObject();
+//            }
+//        }
     }
 
     public static class ShardSerializer extends StdSerializer<Shard> {
