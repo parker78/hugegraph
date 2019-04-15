@@ -75,12 +75,12 @@ public class RankTraverser extends HugeTraverser {
             newVertices = newMultivalueMap();
 
             Map<Id, Double> lastLayerRanks = ranks.get(ranks.size() - 1);
-            Map<Id, Double> rankIncrs = new HashMap<>();
+            Map<Id, Double> sameLayerIncrRanks = new HashMap<>();
             MultivaluedMap<Id, Node> adjacencies = newMultivalueMap();
             // Traversal vertices of previous level
             for (Map.Entry<Id, List<Node>> entry : sources.entrySet()) {
-                Id curNode = entry.getKey();
-                Iterator<Edge> edges = edgesOfVertex(curNode, step.direction,
+                Id vertex = entry.getKey();
+                Iterator<Edge> edges = edgesOfVertex(vertex, step.direction,
                                                      step.labels, null,
                                                      step.degree);
 
@@ -124,7 +124,7 @@ public class RankTraverser extends HugeTraverser {
                 }
                 assert degree == sameLayerNodes.size() + prevLayerNodes.size() +
                                  adjacency.size();
-                adjacencies.addAll(curNode, adjacency);
+                adjacencies.addAll(vertex, adjacency);
 
                 // Add current node's adjacent nodes
                 for (Node node : adjacency) {
@@ -136,32 +136,32 @@ public class RankTraverser extends HugeTraverser {
                         }
                     }
                 }
-                double incrRank = lastLayerRanks.get(curNode) * alpha / degree;
+                double incr = lastLayerRanks.get(vertex) * this.alpha / degree;
                 for (Id node : sameLayerNodes) {
                     // Assign an initial value when firstly update neighbor rank
-                    double originRank = rankIncrs.getOrDefault(node, 0.0);
-                    rankIncrs.put(node, originRank + incrRank);
+                    double oldRank = sameLayerIncrRanks.getOrDefault(node, 0.0);
+                    sameLayerIncrRanks.put(node, oldRank + incr);
                 }
                 for (Map.Entry<Integer, Set<Id>> e : prevLayerNodes.entrySet()) {
                     Map<Id, Double> prevLayerRanks = ranks.get(e.getKey());
                     for (Id node : e.getValue()) {
                         double originRank = prevLayerRanks.get(node);
-                        prevLayerRanks.put(node, originRank + incrRank);
+                        prevLayerRanks.put(node, originRank + incr);
                     }
                 }
             }
 
-            Map<Id, Double> newLayerRanks = new LimitOrderedMap(step.backup);
+            Map<Id, Double> newLayerRanks = new LimitOrderedMap(step.capacity);
             if (sameLayerTransfer) {
                 // First contribute to last layer, then pass to the new layer
-                this.contributeLastLayer(rankIncrs, lastLayerRanks);
+                this.contributeLastLayer(sameLayerIncrRanks, lastLayerRanks);
                 this.contributeNewLayer(adjacencies, lastLayerRanks,
                                         newLayerRanks);
             } else {
                 // First pass to the new layer, then contribute to last layer
                 this.contributeNewLayer(adjacencies, lastLayerRanks,
                                         newLayerRanks);
-                this.contributeLastLayer(rankIncrs, lastLayerRanks);
+                this.contributeLastLayer(sameLayerIncrRanks, lastLayerRanks);
             }
             ranks.add(newLayerRanks);
 
@@ -171,7 +171,7 @@ public class RankTraverser extends HugeTraverser {
         if (stepNum != 0) {
             return ImmutableList.of(ImmutableMap.of());
         }
-        return this.cropRanks(ranks, steps);
+        return this.topRanks(ranks, steps);
     }
 
     private void contributeLastLayer(Map<Id, Double> rankIncrs,
@@ -187,27 +187,27 @@ public class RankTraverser extends HugeTraverser {
                                     Map<Id, Double> lastLayerRanks,
                                     Map<Id, Double> newLayerRanks) {
         for (Map.Entry<Id, List<Node>> entry : adjacencies.entrySet()) {
-            Id parentId = entry.getKey();
+            Id parent = entry.getKey();
             long size = entry.getValue().size();
             for (Node node : entry.getValue()) {
                 double rank = newLayerRanks.getOrDefault(node.id(), 0.0);
-                rank += (lastLayerRanks.get(parentId) * alpha / size);
+                rank += (lastLayerRanks.get(parent) * this.alpha / size);
                 newLayerRanks.put(node.id(), rank);
             }
         }
     }
 
-    private List<Map<Id, Double>> cropRanks(List<Map<Id, Double>> ranks,
-                                            List<Step> steps) {
+    private List<Map<Id, Double>> topRanks(List<Map<Id, Double>> ranks,
+                                           List<Step> steps) {
         assert ranks.size() > 0;
         List<Map<Id, Double>> results = new ArrayList<>(ranks.size());
-        // The first layer is root node
+        // The first layer is root node so skip i=0
         results.add(ranks.get(0));
         for (int i = 1; i < ranks.size(); i++) {
             Step step = steps.get(i - 1);
             Map<Id, Double> origin = ranks.get(i);
-            if (origin.size() > step.number) {
-                Map<Id, Double> cropped = topN(origin, step.number);
+            if (origin.size() > step.top) {
+                Map<Id, Double> cropped = topN(origin, step.top);
                 results.add(cropped);
             } else {
                 results.add(origin);
@@ -218,19 +218,21 @@ public class RankTraverser extends HugeTraverser {
 
     public static class Step {
 
-        private Directions direction;
-        private Map<Id, String> labels;
-        private long degree;
-        private int number;
-        private int backup;
+        private static final int DEFAULT_CAPACITY_PER_LAYER = 100000;
+
+        private final Directions direction;
+        private final Map<Id, String> labels;
+        private final long degree;
+        private final int top;
+        private final int capacity;
 
         public Step(Directions direction, Map<Id, String> labels,
-                    long degree, int number) {
+                    long degree, int top) {
             this.direction = direction;
             this.labels = labels;
             this.degree = degree;
-            this.number = number;
-            this.backup = 100000;
+            this.top = top;
+            this.capacity = DEFAULT_CAPACITY_PER_LAYER;
         }
     }
 
@@ -239,8 +241,8 @@ public class RankTraverser extends HugeTraverser {
         private final int capacity;
         private final Map<Id, Double> valueMap;
 
-        public LimitOrderedMap(int count) {
-            this(count, DECR_ORDER, new HashMap<>());
+        public LimitOrderedMap(int capacity) {
+            this(capacity, DECR_ORDER, new HashMap<>());
         }
 
         private LimitOrderedMap(int capacity, Ordering<Double> ordering,
@@ -255,7 +257,7 @@ public class RankTraverser extends HugeTraverser {
         public Double put(Id k, Double v) {
             if (this.valueMap.containsKey(k)) {
                 this.remove(k);
-            } else if (this.valueMap.size() >= capacity) {
+            } else if (this.valueMap.size() >= this.capacity) {
                 Id key = this.lastKey();
                 this.remove(key);
                 this.valueMap.remove(key);

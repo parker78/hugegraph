@@ -65,23 +65,19 @@ public class NeighborRankAPI extends API {
     public String neighborRank(@Context GraphManager manager,
                                @PathParam("graph") String graph,
                                RankRequest request) {
+        E.checkArgumentNotNull(request, "The rank request body can't be null");
+        E.checkArgumentNotNull(request.source,
+                               "The sources of rank request can't be null");
+        E.checkArgument(request.steps != null && !request.steps.isEmpty(),
+                        "The steps of rank request can't be empty");
+        E.checkArgument(request.alpha > 0 && request.alpha <= 1.0,
+                        "The alpha of rank request must belong (0, 1], " +
+                        "but got '%s'", request.alpha);
+
         LOG.debug("Graph [{}] get neighbor rank from '{}' with steps '{}', " +
                   "alpha '{}', capacity '{}', limit '{}'",
                   graph, request.source, request.steps, request.alpha,
                   request.capacity, request.limit);
-
-        E.checkArgumentNotNull(request, "The rank request body can't be null");
-        E.checkArgumentNotNull(request.source,
-                               "The sources of rank request can't be null");
-        if (request.steps != null) {
-            E.checkArgument(!request.steps.isEmpty(),
-                            "The steps of rank request are either not " +
-                            "specified or as null, but can't be specified " +
-                            "as empty");
-        }
-        E.checkArgument(request.alpha > 0 && request.alpha <= 1.0,
-                        "The alpha of rank request must belong (0, 1], " +
-                        "but got '%s'", request.alpha);
 
         Id sourceId = VertexAPI.checkAndParseVertexId(request.source);
         HugeGraph g = graph(manager, graph);
@@ -128,7 +124,7 @@ public class NeighborRankAPI extends API {
 
     private static class Step {
 
-        private static int MAX_NUMBER = 1000;
+        private static int MAX_TOP = 1000;
 
         @JsonProperty("direction")
         public Directions direction;
@@ -136,8 +132,8 @@ public class NeighborRankAPI extends API {
         public List<String> labels;
         @JsonProperty("degree")
         public long degree = Long.valueOf(DEFAULT_DEGREE);
-        @JsonProperty("number")
-        public int number = MAX_NUMBER;
+        @JsonProperty("top")
+        public int top = MAX_TOP;
 
         @Override
         public String toString() {
@@ -152,9 +148,9 @@ public class NeighborRankAPI extends API {
             E.checkArgument(this.degree == NO_LIMIT,
                             "Degree must be greater than or equal to sample, " +
                             "but got degree %s", degree);
-            E.checkArgument(this.number > 0 && this.number <= MAX_NUMBER,
+            E.checkArgument(this.top > 0 && this.top <= MAX_TOP,
                             "The recommended number of each layer cannot " +
-                            "exceed '%s'", MAX_NUMBER);
+                            "exceed '%s'", MAX_TOP);
             Map<Id, String> labelIds = new HashMap<>();
             if (this.labels != null) {
                 for (String label : this.labels) {
@@ -163,7 +159,7 @@ public class NeighborRankAPI extends API {
                 }
             }
             return new RankTraverser.Step(this.direction, labelIds,
-                                          this.degree, this.number);
+                                          this.degree, this.top);
         }
     }
 }
