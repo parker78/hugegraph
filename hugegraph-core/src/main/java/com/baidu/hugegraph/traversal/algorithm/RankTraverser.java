@@ -26,7 +26,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 import javax.ws.rs.core.MultivaluedMap;
 
@@ -37,11 +36,9 @@ import com.baidu.hugegraph.backend.id.Id;
 import com.baidu.hugegraph.structure.HugeEdge;
 import com.baidu.hugegraph.type.define.Directions;
 import com.baidu.hugegraph.util.E;
-import com.baidu.hugegraph.util.InsertionOrderUtil;
-import com.google.common.base.Functions;
+import com.baidu.hugegraph.util.OrderLimitMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Ordering;
 
 public class RankTraverser extends HugeTraverser {
 
@@ -145,13 +142,13 @@ public class RankTraverser extends HugeTraverser {
                 for (Map.Entry<Integer, Set<Id>> e : prevLayerNodes.entrySet()) {
                     Map<Id, Double> prevLayerRanks = ranks.get(e.getKey());
                     for (Id node : e.getValue()) {
-                        double originRank = prevLayerRanks.get(node);
-                        prevLayerRanks.put(node, originRank + incr);
+                        double oldRank = prevLayerRanks.get(node);
+                        prevLayerRanks.put(node, oldRank + incr);
                     }
                 }
             }
 
-            Map<Id, Double> newLayerRanks = new LimitOrderedMap(step.capacity);
+            Map<Id, Double> newLayerRanks = new OrderLimitMap<>(step.capacity);
             if (sameLayerTransfer) {
                 // First contribute to last layer, then pass to the new layer
                 this.contributeLastLayer(sameLayerIncrRanks, lastLayerRanks);
@@ -205,10 +202,10 @@ public class RankTraverser extends HugeTraverser {
         results.add(ranks.get(0));
         for (int i = 1; i < ranks.size(); i++) {
             Step step = steps.get(i - 1);
-            Map<Id, Double> origin = ranks.get(i);
+            OrderLimitMap<Id, Double> origin = (OrderLimitMap<Id, Double>)
+                                               ranks.get(i);
             if (origin.size() > step.top) {
-                Map<Id, Double> cropped = topN(origin, step.top);
-                results.add(cropped);
+                results.add(origin.topN(step.top));
             } else {
                 results.add(origin);
             }
@@ -234,69 +231,5 @@ public class RankTraverser extends HugeTraverser {
             this.top = top;
             this.capacity = DEFAULT_CAPACITY_PER_LAYER;
         }
-    }
-
-    private static class LimitOrderedMap extends TreeMap<Id, Double> {
-
-        private final int capacity;
-        private final Map<Id, Double> valueMap;
-
-        public LimitOrderedMap(int capacity) {
-            this(capacity, DECR_ORDER, new HashMap<>());
-        }
-
-        private LimitOrderedMap(int capacity, Ordering<Double> ordering,
-                                HashMap<Id, Double> valueMap) {
-            super(ordering.onResultOf(Functions.forMap(valueMap))
-                          .compound(Ordering.natural()));
-            this.capacity = capacity;
-            this.valueMap = valueMap;
-        }
-
-        @Override
-        public Double put(Id k, Double v) {
-            if (this.valueMap.containsKey(k)) {
-                this.remove(k);
-            } else if (this.valueMap.size() >= this.capacity) {
-                Id key = this.lastKey();
-                this.remove(key);
-                this.valueMap.remove(key);
-            }
-            this.valueMap.put(k, v);
-            return super.put(k, v);
-        }
-
-        @Override
-        public Double getOrDefault(Object key, Double defaultValue) {
-            return this.valueMap.getOrDefault(key, defaultValue);
-        }
-
-        @Override
-        public boolean containsKey(Object key) {
-            return this.valueMap.containsKey(key);
-        }
-    }
-
-    private static Ordering<Double> DECR_ORDER = Ordering.from((o1, o2) -> {
-        if (o1 > o2) {
-            return -1;
-        } else if (o1 < o2) {
-            return 1;
-        } else {
-            return 0;
-        }
-    });
-
-    private static Map<Id, Double> topN(Map<Id, Double> origin, int n) {
-        E.checkArgument(n > 0, "'N' Must be positive, but got '%s'", n);
-        Map<Id, Double> subMap = InsertionOrderUtil.newMap();
-        int i = 0;
-        for (Map.Entry<Id, Double> entry : origin.entrySet()) {
-            subMap.put(entry.getKey(), entry.getValue());
-            if (++i >= n) {
-                break;
-            }
-        }
-        return subMap;
     }
 }
